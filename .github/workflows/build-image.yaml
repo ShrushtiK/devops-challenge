@@ -25,4 +25,6 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ vars.DOCKERHUB_USERNAME }}/devops-challenge:latest
+          tags: |
+            ${{ vars.DOCKERHUB_USERNAME }}/devops-challenge:latest
+            ${{ vars.DOCKERHUB_USERNAME }}/devops-challenge:${{ github.sha }}
