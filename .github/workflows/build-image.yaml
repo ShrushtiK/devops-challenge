@@ -1,0 +1,16 @@
+# https://docs.github.com/en/actions/tutorials/create-an-example-workflow
+name: Build and publish nginx image
+
+on: [push]
+
+jobs:
+  build:
+    name: Build Docker image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Build Docker image
+        run: docker build -t devops-challenge:latest .
