@@ -69,7 +69,7 @@ jobs:
         run: |
           oc rollout status deployment/${{ env.APP_NAME }} \
           -n "${{ vars.OPENSHIFT_NAMESPACE }}" \
-          --time-out=60s
+          --timeout=60s
       
       - name: Verify webpage is accessible
         run: |
