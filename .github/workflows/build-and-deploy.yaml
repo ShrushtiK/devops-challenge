@@ -26,7 +26,7 @@ jobs:
 
       - name: Run smoke test for nginx
         run: |
-          docker run -d --name devops-test -p 8080:8080 devops-challenge:test
+          docker run -d --name devops-test -p 8080:80 devops-challenge:test
           curl --retry 10 --retry-delay 1 --retry-connrefused --fail http://localhost:8080 | grep "Hello DevOps"
 
       - name: Log in to Docker Hub
