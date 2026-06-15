@@ -1,0 +1,10 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: vodafone-ziggo-demo
+spec:
+  to:
+    kind: Service
+    name: vodafone-ziggo-demo
+  port:
+    targetPort: 8080

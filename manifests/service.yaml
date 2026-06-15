@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: vodafone-ziggo-demo
+spec:
+  selector:
+    app: vodafone-ziggo-demo
+  ports:
+    - port: 8080
+      targetPort: 8080

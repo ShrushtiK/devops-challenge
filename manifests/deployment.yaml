@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vodafone-ziggo-demo
+  labels:
+    app: vodafone-ziggo-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vodafone-ziggo-demo
+  template:
+    metadata:
+      labels:
+        app: vodafone-ziggo-demo
+    spec:
+      containers:
+        - name: devops-challenge
+          image: shrushti5/devops-challenge:latest
+          ports:
+            - containerPort: 8080
