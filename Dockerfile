@@ -2,4 +2,6 @@ FROM nginxinc/nginx-unprivileged:stable-alpine
 
 COPY index.html /usr/share/nginx/html/index.html
 
-EXPOSE 80
+
+# unpriviledged runs on 8080
+EXPOSE 8080
