@@ -86,7 +86,7 @@ jobs:
       - name: Deploy the new image
         run: |
           oc set image deployment/${{ env.APP_NAME }} \
-          ${{ env.CONTAINER_NAME }}=${{ vars.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:wrong-tag \
+          ${{ env.CONTAINER_NAME }}=${{ vars.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
           -n "${{ vars.OPENSHIFT_NAMESPACE }}"
       
       - name: Perform rollout with wait
