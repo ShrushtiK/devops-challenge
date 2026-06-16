@@ -3,10 +3,10 @@
 
 name: Build image and deploy on OpenShift
 
-on:
-  push:
-    branches:
-      - main
+#on:
+#  push:
+#    branches:
+#      - main
 
 env:
   APP_NAME: vodafone-ziggo-demo
@@ -94,7 +94,7 @@ jobs:
           oc rollout status deployment/${{ env.APP_NAME }} \
           -n "${{ vars.OPENSHIFT_NAMESPACE }}" \
           --timeout=60s
-      
+
       - name: Verify webpage is accessible
         run: |
           ROUTE_HOST=$(oc get route ${{ env.APP_NAME }} -n "${{ vars.OPENSHIFT_NAMESPACE }}" -o jsonpath='{.spec.host}')
