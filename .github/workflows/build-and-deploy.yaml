@@ -3,10 +3,10 @@
 
 name: Build image and deploy on OpenShift
 
-#on:
-#  push:
-#    branches:
-#      - main
+on:
+  push:
+    branches:
+      - main
 
 env:
   APP_NAME: vodafone-ziggo-demo
@@ -86,11 +86,21 @@ jobs:
       - name: Deploy the new image
         run: |
           oc set image deployment/${{ env.APP_NAME }} \
-          ${{ env.CONTAINER_NAME }}=${{ vars.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+          ${{ env.CONTAINER_NAME }}=${{ vars.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:wrong-tag \
           -n "${{ vars.OPENSHIFT_NAMESPACE }}"
       
-      - name: Perform Rollout with wait
+      - name: Perform rollout with wait
         run: |
+          oc rollout status deployment/${{ env.APP_NAME }} \
+          -n "${{ vars.OPENSHIFT_NAMESPACE }}" \
+          --timeout=60s
+
+      - name: Rollback in case of failure
+        if: failure()
+        run: |
+          echo "Deployment failed. Rolling back to previous ReplicaSet"
+          oc rollout undo deployment/${{ env.APP_NAME }} \
+            -n "${{ vars.OPENSHIFT_NAMESPACE }}"
           oc rollout status deployment/${{ env.APP_NAME }} \
           -n "${{ vars.OPENSHIFT_NAMESPACE }}" \
           --timeout=60s
