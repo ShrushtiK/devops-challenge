@@ -28,7 +28,7 @@ jobs:
         run: |
           docker run -d --name devops-test -p 8080:8080 devops-challenge:test
           docker ps
-          curl --retry 10 --retry-delay 1 --retry-connrefused --fail http://127.0.0.1:8080 | grep "Hello DevOps"
+          curl -fsS http://127.0.0.1:8080 | grep "Hello DevOps"
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v4
