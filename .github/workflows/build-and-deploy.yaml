@@ -97,8 +97,8 @@ jobs:
           helm upgrade --install ${{ env.APP_NAME }} helm/webserver \
           --namespace "${{ vars.OPENSHIFT_NAMESPACE }}" \
           --set image.repository="${{ vars.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}" \
-          --set image.tag="${{ github.sha }}" \
-          --atomic \
+          --set image.tag="wrong" \
+          --rollback-on-failure \
           --timeout=60s
 
       - name: Verify webpage is accessible
