@@ -1,4 +1,4 @@
-name: Build image and deploy on OpenShift
+name: Build image and update Helm values.yaml for GitOps
 
 on:
   push:
@@ -8,16 +8,17 @@ on:
       - 'Dockerfile'
       - '.dockerignore'
       - 'index.html'
-      - 'helm/**'
-      - '.github/workflows/build-and-deploy.yaml'
+
+permissions:
+  contents: write
 
 env:
-  APP_NAME: vodafone-ziggo-demo
   IMAGE_NAME: devops-challenge
   CONTAINER_NAME: devops-challenge
 
 jobs:
-  build-and-push-image:
+  build-and-update:
+    if: ${{ !contains(github.event.head_commit.message, 'Update image tag to') }}
     runs-on: ubuntu-latest
 
     steps:
@@ -47,6 +48,7 @@ jobs:
           docker logs devops-test
           docker rm -f devops-test
           exit 1
+
       - name: Scan image for vulnerabilities
         uses: aquasecurity/trivy-action@v0.36.0
         with:
@@ -72,45 +74,24 @@ jobs:
             ${{ vars.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
             ${{ vars.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
-  deploy-on-openshift:
-    runs-on: ubuntu-latest
-    needs: build-and-push-image
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Install OpenShift CLI
-        uses: redhat-actions/openshift-tools-installer@v1
-        with:
-          oc: latest
-
-      - name: Set up Helm
-        uses: azure/setup-helm@v4
-
-      - name: Log in to OpenShift
-        uses: redhat-actions/oc-login@v1
-        with:
-          openshift_server_url: ${{ secrets.OPENSHIFT_SERVER }}
-          openshift_token: ${{ secrets.OPENSHIFT_TOKEN }}
-          namespace: ${{ vars.OPENSHIFT_NAMESPACE }}
+      - name: Update Helm values with new image
+        run: |
+          sed -i "s|repository: .*|repository: ${{ vars.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}|" "${{ env.VALUES_FILE }}"
+          sed -i "s|tag: .*|tag: ${{ github.sha }}|" "${{ env.VALUES_FILE }}"
       
-      - name: Lint Helm chart
-        run: helm lint helm/webserver
-
-      - name: Perform Deployment
+      - name: Commit updated Helm values
         run: |
-          helm upgrade --install ${{ env.APP_NAME }} helm/webserver \
-          --namespace "${{ vars.OPENSHIFT_NAMESPACE }}" \
-          --set image.repository="${{ vars.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}" \
-          --set image.tag="${{ github.sha }}" \
-          --rollback-on-failure \
-          --timeout=60s
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
 
-      - name: Verify webpage is accessible
-        run: |
-          ROUTE_HOST=$(oc get route ${{ env.APP_NAME }} -n "${{ vars.OPENSHIFT_NAMESPACE }}" -o jsonpath='{.spec.host}')
-          echo "Route: http://$ROUTE_HOST"
-          curl -fsS "http://$ROUTE_HOST"
+          if git diff --quiet; then
+            echo "No Helm values changes to commit"
+            exit 0
+          fi
+
+          git add "${{ env.VALUES_FILE }}"
+          git commit -m "Update image tag to ${{ github.sha }}"
+          git push
 
 
+  
