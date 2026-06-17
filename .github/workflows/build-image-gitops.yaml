@@ -3,7 +3,7 @@ name: Build image and update Helm values.yaml for GitOps
 on:
   push:
     branches:
-      - main
+      - argo-cd
     paths:
       - 'Dockerfile'
       - '.dockerignore'
@@ -15,6 +15,7 @@ permissions:
 env:
   IMAGE_NAME: devops-challenge
   CONTAINER_NAME: devops-challenge
+  VALUES_FILE: helm/webserver/values.yaml
 
 jobs:
   build-and-update:
