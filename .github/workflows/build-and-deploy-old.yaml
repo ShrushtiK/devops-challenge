@@ -1,9 +1,12 @@
+# https://docs.docker.com/guides/gha/
+# https://github.com/redhat-actions/oc-login
+
 name: Build image and deploy on OpenShift
 
-on:
-  push:
-    branches:
-      - main
+#on:
+#  push:
+#    branches:
+#      - main
 
 env:
   APP_NAME: vodafone-ziggo-demo
@@ -79,26 +82,36 @@ jobs:
         with:
           oc: latest
 
-      - name: Set up Helm
-        uses: azure/setup-helm@v4
-
-      - name: Log in to OpenShift
+      - name: Log in to openshift
         uses: redhat-actions/oc-login@v1
         with:
           openshift_server_url: ${{ secrets.OPENSHIFT_SERVER }}
           openshift_token: ${{ secrets.OPENSHIFT_TOKEN }}
           namespace: ${{ vars.OPENSHIFT_NAMESPACE }}
       
-      - name: Lint Helm chart
-        run: helm lint helm/webserver
-
-      - name: Perform Deployment
+      - name: Apply OpenShift manifests
+        run: oc apply -f manifests/ -n "${{ vars.OPENSHIFT_NAMESPACE }}"
+      
+      - name: Deploy the new image
         run: |
-          helm upgrade --install ${{ env.APP_NAME }} helm/webserver \
-          --namespace "${{ vars.OPENSHIFT_NAMESPACE }}" \
-          --set image.repository="${{ vars.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}" \
-          --set image.tag="${{ github.sha }}" \
-          --atomic \
+          oc set image deployment/${{ env.APP_NAME }} \
+          ${{ env.CONTAINER_NAME }}=${{ vars.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+          -n "${{ vars.OPENSHIFT_NAMESPACE }}"
+      
+      - name: Perform rollout with wait
+        run: |
+          oc rollout status deployment/${{ env.APP_NAME }} \
+          -n "${{ vars.OPENSHIFT_NAMESPACE }}" \
+          --timeout=60s
+
+      - name: Rollback in case of failure
+        if: failure()
+        run: |
+          echo "Deployment failed. Rolling back to previous ReplicaSet"
+          oc rollout undo deployment/${{ env.APP_NAME }} \
+            -n "${{ vars.OPENSHIFT_NAMESPACE }}"
+          oc rollout status deployment/${{ env.APP_NAME }} \
+          -n "${{ vars.OPENSHIFT_NAMESPACE }}" \
           --timeout=60s
 
       - name: Verify webpage is accessible

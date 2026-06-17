@@ -1,0 +1,6 @@
+apiVersion: v2
+name: vodafone-ziggo-demo
+description: Helm chart for the VodafoneZiggo DevOps technical case web server
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
