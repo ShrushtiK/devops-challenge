@@ -97,7 +97,7 @@ jobs:
           helm upgrade --install ${{ env.APP_NAME }} helm/webserver \
           --namespace "${{ vars.OPENSHIFT_NAMESPACE }}" \
           --set image.repository="${{ vars.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}" \
-          --set image.tag="wrong" \
+          --set image.tag="${{ github.sha }}" \
           --rollback-on-failure \
           --timeout=60s
 
