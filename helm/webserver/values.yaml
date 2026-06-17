@@ -8,7 +8,7 @@ replicaCount: 1
 
 image:
   repository: shrushti5/devops-challenge
-  tag: latest
+  tag: 9994fe472110b77ae72fb474cf56e6f9bdfa6d6d
 
 service:
   port: 8080
