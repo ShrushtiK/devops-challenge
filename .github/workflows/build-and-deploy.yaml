@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'index.html'
+      - 'helm/**'
+      - '.github/workflows/build-and-deploy.yaml'
 
 env:
   APP_NAME: vodafone-ziggo-demo
