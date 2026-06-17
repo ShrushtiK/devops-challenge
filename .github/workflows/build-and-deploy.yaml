@@ -44,6 +44,15 @@ jobs:
           docker logs devops-test
           docker rm -f devops-test
           exit 1
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: devops-challenge:test
+          format: table
+          exit-code: 1
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v4
