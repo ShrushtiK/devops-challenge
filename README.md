@@ -1,306 +1,419 @@
-# O&Si DevOps Challenge
+# O&Si DevOps Challenge (with ArgoCD)
+
 
 ## Overview
 
-This project builds a Dockerized web server that serves a simple webpage and deploys it on OpenShift.
+This branch extends the primary OpenShift implementation with a GitOps-based
+deployment model.  In this implementation, GitHub Actions handles continuous integration and image
+publication, while Argo CD handles continuous deployment to a local Kubernetes
+cluster.
 
-![alt text](image.png)
+This document focuses on the GitOps deployment flow: running Kubernetes
+locally with k3d, defining the desired state with Helm, and using Argo CD to
+reconcile that state automatically.
 
-The application is containerized with Docker, published to Docker Hub, and deployed to Red Hat OpenShift Developer Sandbox using GitHub Actions and Helm.
+The shared application, Docker image, Docker Hub, and image validation details
+are documented in the
+[main branch](https://github.com/ShrushtiK/devops-challenge/tree/main).
 
-
-## Web Server and Webpage
-
-The static web page can be found in `index.html`. It displays the required greeting and date. Nginx is used as the web server here because the application is a static webpage and does not require a backend runtime.
-
-## Docker Containerization
-
-`Dockerfile` helps with creating a Docker image for the web server. The image uses:
-
-```text
-nginxinc/nginx-unprivileged:stable-alpine
-```
-
-This base image is maintained and suitable for OpenShift's restricted security model, where containers should not rely on running as root.
-
-
-## Container Registry
-
-The image used is published to Docker Hub: [docker.io/shrushti5/devops-challenge](https://hub.docker.com/repository/docker/shrushti5/devops-challenge/general)
-
-### Docker Image Creation
-
-The Docker image is built from the `Dockerfile`.
-
-The image uses:
+## Architecture
 
 ```text
-nginxinc/nginx-unprivileged:stable-alpine
+Application change
+        |
+        v
+GitHub Actions
+  |
+  +-- Build test image
+  +-- Run smoke test
+  +-- Scan with Trivy
+  +-- Publish image to Docker Hub
+  |     - latest
+  |     - commit SHA
+  |
+  +-- Update image tag in Helm values.yaml
+  +-- Commit the updated desired state to Git
+        |
+        v
+Argo CD detects the change
+        |
+        v
+Argo CD renders the Helm chart
+and synchronizes the resources
+        |
+        v
+k3d Kubernetes cluster
+  - Deployment
+  - Service
+  - Ingress
+        |
+        v
+http://devops.localhost:8082
 ```
 
-This base image was chosen because it is lightweight, maintained, and suitable for OpenShift, where containers should not depend on running as root.
+Git is the source of truth for the deployment. GitHub Actions does not connect
+to the Kubernetes cluster or run `helm upgrade`. Instead, it publishes a new
+image and records its commit-SHA tag in `helm/webserver/values.yaml`.
+Argo CD observes that Git change and reconciles the cluster.
 
-The Dockerfile copies the static webpage into the Nginx web root:
+## Prerequisites
 
-```dockerfile
-FROM nginxinc/nginx-unprivileged:stable-alpine
+The local implementation was tested on Windows and assumes the following
+tools are already installed:
 
-COPY index.html /usr/share/nginx/html/index.html
+- Docker Desktop running Linux containers.
+- PowerShell.
+- `kubectl`.
+- k3d.
+- Git.
 
-EXPOSE 8080
+Docker must be running because k3d creates the Kubernetes nodes as Docker
+containers.
+
+Verify that the required tools are available:
+
+```powershell
+docker version
+k3d version
+kubectl version --client
 ```
 
-The container listens on port `8080`, which matches the unprivileged Nginx image.
+## Create the Local Kubernetes Cluster
 
+Create a single local k3d cluster and map port `8082` on Windows to port `80`
+on the k3d load balancer:
 
-### Building the Docker Image Locally
-
-From the repository root, build the image with the Dockerfile available in the same directory level:
-
-```bash
-docker build -t devops-challenge:local .
+```powershell
+k3d cluster create vodafone-ziggo-argocd -p "8082:80@loadbalancer"
 ```
 
-Run the image locally:
+k3d updates the local kubeconfig automatically. Confirm that the node is
+available:
 
-```bash
-docker run --rm -p 8080:8080 devops-challenge:local
+```powershell
+kubectl get nodes
 ```
 
-Open the webpage:
+The node should report `Ready`.
+
+The cluster includes Traefik as its default Ingress controller. The port
+mapping allows the application Ingress to be reached through
+`localhost:8082`.
+
+Useful cluster commands:
+
+```powershell
+k3d cluster list
+k3d cluster stop vodafone-ziggo-argocd
+k3d cluster start vodafone-ziggo-argocd
+```
+
+## Install Argo CD
+
+Create the namespace used by Argo CD:
+
+```powershell
+kubectl create namespace argocd
+```
+
+Install Argo CD using its official installation manifest:
+
+```powershell
+kubectl apply -n argocd --server-side --force-conflicts `
+  -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+```
+
+Wait for the Argo CD components to become ready:
+
+```powershell
+kubectl get pods -n argocd
+kubectl wait --for=condition=Ready pods --all -n argocd --timeout=300s
+```
+
+## Access Argo CD with Port Forwarding
+
+The `argocd-server` Service is created as `ClusterIP`, so it is only accessible
+inside the Kubernetes cluster by default. Use `kubectl port-forward` to expose
+it temporarily on port `8081` of the Windows machine:
+
+```powershell
+kubectl port-forward service/argocd-server -n argocd 8081:443
+```
+
+Open:
 
 ```text
-http://localhost:8080
+https://localhost:8081
 ```
 
-You can also verify with:
+The browser may display a warning because the local endpoint uses Argo CD's
+self-signed certificate.
 
-```bash
-curl http://localhost:8080
-```
-
-### Publish the Image to Docker Hub
-
-The image is published to Docker Hub as:
+The username is:
 
 ```text
-shrushti5/devops-challenge
+admin
 ```
 
-For a manual push, log in to Docker Hub first with your username and personal access token:
+Retrieve and decode the initial password in PowerShell:
 
-```bash
-docker login
+```powershell
+$encodedPassword = kubectl -n argocd get secret argocd-initial-admin-secret `
+  -o jsonpath="{.data.password}"
+
+[System.Text.Encoding]::UTF8.GetString(
+  [System.Convert]::FromBase64String($encodedPassword)
+)
 ```
 
-Build the image with the Docker Hub repository name:
-
-```bash
-docker build -t shrushti5/devops-challenge:latest .
-```
-
-Push the image:
-
-```bash
-docker push shrushti5/devops-challenge:latest
-```
-
-Pull the published image:
-
-```bash
-docker pull shrushti5/devops-challenge:latest
-```
-
-Run the published image locally:
-
-```bash
-docker run --rm -p 8080:8080 shrushti5/devops-challenge:latest
-```
-
-## CI/CD Pipeline
-
-The CI/CD pipeline is implemented using GitHub Actions.
-
-The workflow is triggered on every push to the `main` branch.
-
-The pipeline automates the following process:
-
-1. Check out the repository.
-2. Build a test Docker image.
-3. Run the container and smoke-test the webpage.
-4. Scan the image with Trivy for high and critical vulnerabilities.
-5. Log in to Docker Hub.
-6. Build and push the Docker image to Docker Hub.
-7. Log in to OpenShift Developer Sandbox.
-8. Lint the Helm chart.
-9. Deploy the application to OpenShift using Helm.
-10. Verify that the OpenShift Route is accessible.
-
-The pipeline pushes the image using two tags:
+This command forwards:
 
 ```text
-latest
-<git-commit-sha>
+Windows localhost:8081 -> argocd-server:443
 ```
 
-The OpenShift deployment uses the commit SHA tag so the deployed version can be traced back to a specific commit.
+The PowerShell session running the command must remain open while the Argo CD
+interface is being accessed. This forwarding is only for the Argo CD
+interface; the web application uses its Ingress at
+`http://devops.localhost:8082`.
 
-### CI/CD Configuration
+## Bootstrap the Application
 
-The GitHub Actions workflow uses repository variables for non-sensitive values:
+The Argo CD Application is defined declaratively in:
+
+```text
+argocd/application.yaml
+```
+
+Apply it to the cluster:
+
+```powershell
+kubectl apply -f argocd/application.yaml
+```
+
+This resource configures Argo CD to:
+
+- Read this repository.
+- Track the `argo-cd` branch.
+- Render the chart in `helm/webserver`.
+- Deploy into the `devops-challenge` namespace.
+- Create the destination namespace when it does not exist.
+- Synchronize changes automatically.
+- Remove managed resources that are deleted from Git.
+- Correct manual changes made directly in the cluster.
+
+These behaviors are configured by:
+
+```yaml
+syncPolicy:
+  automated:
+    prune: true
+    selfHeal: true
+  syncOptions:
+    - CreateNamespace=true
+```
+
+Because Argo CD and the application run in the same cluster, the destination
+server is the in-cluster Kubernetes API:
+
+```text
+https://kubernetes.default.svc
+```
+
+No external cluster registration is required.
+
+Check the Application:
+
+```powershell
+kubectl get applications -n argocd
+kubectl describe application devops-challenge -n argocd
+```
+
+A successfully reconciled application should report:
+
+```text
+SYNC STATUS     Synced
+HEALTH STATUS   Healthy
+```
+
+## Helm and Argo CD
+
+The chart in `helm/webserver` defines the desired Kubernetes resources:
+
+- A `Deployment` that runs the web server image.
+- A `Service` that exposes the container on port `8080` inside the cluster.
+- An `Ingress` that routes `devops.localhost` to the Service.
+
+In this implementation, Helm is used as a templating and packaging format.
+Argo CD renders the chart and owns the deployment lifecycle. There is no Helm
+release managed through a direct `helm upgrade` command.
+
+This distinction is important:
+
+```text
+Direct Helm deployment: Helm performs the deployment.
+Argo CD deployment:     Argo CD renders Helm and reconciles the resources.
+```
+
+Changes to the Helm chart are therefore deployed directly by Argo CD after
+they are committed to the `argo-cd` branch. They do not require an image build
+or a GitHub Actions deployment step.
+
+## GitHub Actions CI Workflow
+
+The workflow is defined in:
+
+```text
+.github/workflows/build-image-gitops.yaml
+```
+
+It runs for pushes to the `argo-cd` branch only when an image-producing file
+changes:
+
+```yaml
+paths:
+  - Dockerfile
+  - .dockerignore
+  - index.html
+```
+
+Documentation-only and Helm-only changes do not rebuild the image.
+
+The job also ignores commits whose message contains `Update image tag to`.
+This protects the image-tag commit created by the workflow from being treated
+as a new application build.
+
+The workflow performs the following stages:
+
+1. Checks out the repository.
+2. Builds a temporary test image.
+3. Starts the container and smoke-tests the Nginx webpage.
+4. Scans the image with Trivy for high and critical vulnerabilities.
+5. Authenticates to Docker Hub.
+6. Builds and publishes the release image with `latest` and a Git commit SHA
+   tag.
+7. Updates the image repository and tag in `helm/webserver/values.yaml`.
+8. Commits the updated desired state back to the `argo-cd` branch.
+
+The workflow requires this repository variable:
 
 ```text
 DOCKERHUB_USERNAME
-OPENSHIFT_NAMESPACE
 ```
 
-The workflow uses repository secrets for sensitive values:
+It also requires this repository secret:
 
 ```text
 DOCKERHUB_PAT
-OPENSHIFT_SERVER
-OPENSHIFT_TOKEN
 ```
 
-`DOCKERHUB_PAT` is a Docker Hub Personal Access Token used by GitHub Actions to push the image.
+`DOCKERHUB_PAT` is a Docker Hub Personal Access Token with permission to push
+to the image repository.
 
-`OPENSHIFT_SERVER` and `OPENSHIFT_TOKEN` come from the OpenShift Developer Sandbox login command.
+The workflow needs:
 
-To get the OpenShift token from the web console:
+```yaml
+permissions:
+  contents: write
+```
+
+This allows it to commit the new image tag to the repository. Under repository
+**Settings > Actions > General > Workflow permissions**, GitHub Actions must
+also be allowed read and write access. Branch protection rules must permit the
+chosen automated update approach.
+
+The workflow commits a change similar to:
+
+```yaml
+image:
+  repository: shrushti5/devops-challenge
+  tag: <git-commit-sha>
+```
+
+Using the commit SHA rather than deploying only `latest` gives the image a
+unique, traceable version. The pipeline treats SHA tags as immutable release
+identifiers.
+
+## Access and Verify the Application
+
+After Argo CD synchronizes the chart, inspect the deployed resources:
+
+```powershell
+kubectl get deployment,pods,service,ingress -n devops-challenge
+```
+
+Open the application:
 
 ```text
-User menu
-→ Copy login command
-→ Display token
+http://devops.localhost:8082
 ```
 
-The command looks like:
+It can also be verified from PowerShell:
 
-```bash
-oc login --token=<openshift-token> --server=<openshift-server-url>
+```powershell
+curl.exe http://devops.localhost:8082
 ```
 
-## OpenShift Deployment
-
-The application is deployed to Red Hat OpenShift Developer Sandbox.
-
-Deployment is managed with a Helm chart located at:
-
-```text
-helm/webserver
-```
-
-The Helm chart creates the required OpenShift/Kubernetes resources:
-
-```text
-Deployment
-Service
-Route
-```
-
-Helm is used to package the Deployment, Service, and Route as one release.
-
-This provides:
-
-- Cleaner upgrades.
-- Release history.
-- Easier rollback.
-- Configurable image repository and image tag.
-- A deployment approach closer to production usage.
-
-The pipeline uses:
-
-```bash
-helm upgrade --install
-```
-
-with:
-
-```bash
---rollback-on-failure
-```
-
-If a new deployment fails, Helm rolls the release back to the previous successful version. The GitHub Actions job still fails because the new version was not deployed successfully.
-
-To deploy manually, first log in to OpenShift:
-
-```bash
-oc login --token=<openshift-token> --server=<openshift-server-url>
-```
-
-Select or verify the namespace:
-
-```bash
-oc project <openshift-namespace>
-```
-
-Deploy the application with Helm:
-
-```bash
-helm upgrade --install vodafone-ziggo-demo helm/webserver \
-  --namespace <openshift-namespace> \
-  --set image.repository=shrushti5/devops-challenge \
-  --set image.tag=latest \
-  --rollback-on-failure \
-  --timeout=60s
-```
-
-Independent of Helm, you can also deploy the application with independent resource manifests:
-
-```bash
-oc apply -f manifests/
-```
-
-Check the deployed resources:
-
-```bash
-oc get deployment,svc,route,pods -n <openshift-namespace>
-```
-
-Get the route:
-
-```bash
-oc get route vodafone-ziggo-demo -n "shrushti05-dev" -o jsonpath='{.spec.host}'
-```
-
-Open the route URL in a browser and verify that the webpage is accessible.
-
-### Running the Container Locally
-
-To run the container without OpenShift:
-
-```bash
-docker pull shrushti5/devops-challenge:latest
-docker run --rm -p 8080:8080 shrushti5/devops-challenge:latest
-```
-
-Then open:
-
-```text
-http://localhost:8080
-```
-
-### Verification
-
-Local verification:
-
-```bash
-curl http://localhost:8080
-```
-
-OpenShift verification:
-
-```bash
-oc get route vodafone-ziggo-demo -n "shrushti05-dev" -o jsonpath='{.spec.host}'
-```
-
-Open the route URL and confirm that the page displays:
+The page should contain:
 
 ```text
 Hello DevOps O&Si Shrushti Kaul
-Date: <current date>
 ```
 
-## Additional Considerations
+Confirm which versioned image is deployed:
 
-The OpenShift Developer Sandbox token may expire, so the `OPENSHIFT_TOKEN` GitHub secret may need to be refreshed before future deployments.
+```powershell
+kubectl get deployment vodafone-ziggo-demo `
+  -n devops-challenge `
+  -o jsonpath="{.spec.template.spec.containers[0].image}"
+```
+
+The result should contain the Git commit SHA written into `values.yaml`.
+
+## Reconciliation and Pruning
+
+Argo CD continuously compares the resources in Git with the live resources in
+the cluster.
+
+With `selfHeal: true`, a managed resource changed manually with `kubectl` is
+restored to the state declared in Git.
+
+With `prune: true`, a managed resource removed from the Helm chart is also
+removed from the cluster during synchronization. This avoids the orphaned
+resource behavior that can occur when repeatedly using only
+`kubectl apply -f`.
+
+## Rollback
+
+Rollback in this implementation is Git-based. Git remains the source of truth,
+so the desired state is restored by reverting the commit that introduced the
+problem:
+
+```powershell
+git revert <bad-commit-sha>
+git push origin argo-cd
+```
+
+Argo CD detects the revert and reconciles the cluster back to the previous
+image tag or chart configuration.
+
+This differs from the primary OpenShift implementation, where the pipeline
+uses Helm's `--rollback-on-failure` option. Argo CD does not automatically
+change Git to an earlier application version when a deployment becomes
+unhealthy.
+
+For production progressive delivery, Argo Rollouts could be added to provide
+canary or blue-green deployments and automated
+rollback.
+
+
+
+## Production Considerations
+
+This environment is intended as a local GitOps demonstration. A production
+implementation should additionally consider:
+
+- Adding readiness and liveness probes.
+- Defining CPU and memory requests and limits.
+- Enabling TLS for external access.
+- Using Argo Rollouts for progressive delivery and automated rollback.
