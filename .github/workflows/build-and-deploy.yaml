@@ -118,6 +118,9 @@ jobs:
         run: |
           ROUTE_HOST=$(oc get route ${{ env.APP_NAME }} -n "${{ vars.OPENSHIFT_NAMESPACE }}" -o jsonpath='{.spec.host}')
           echo "Route: http://$ROUTE_HOST"
-          curl -fsS "http://$ROUTE_HOST"
+
+          echo "Waiting for Route propagation..."
+          sleep 45
+          curl -fsS --retry-max-time 45 "http://$ROUTE_HOST"
 
 
