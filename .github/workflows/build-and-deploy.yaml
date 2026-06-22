@@ -14,7 +14,6 @@ on:
 env:
   APP_NAME: vodafone-ziggo-demo
   IMAGE_NAME: devops-challenge
-  CONTAINER_NAME: devops-challenge
 
 jobs:
   build-and-push-image:
@@ -25,11 +24,11 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Build test image
-        run: docker build -t devops-challenge:test .
+        run: docker build -t ${{ env.IMAGE_NAME }}:test .
 
       - name: Run smoke test for nginx
         run: |
-          docker run -d --name devops-test devops-challenge:test
+          docker run -d --name devops-test ${{ env.IMAGE_NAME }}:test
 
           for i in {1..10}; do
             if docker exec devops-test wget -qO- http://127.0.0.1:8080 | grep "Hello DevOps"; then
@@ -47,10 +46,11 @@ jobs:
           docker logs devops-test
           docker rm -f devops-test
           exit 1
+
       - name: Scan image for vulnerabilities
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: devops-challenge:test
+          image-ref: ${{ env.IMAGE_NAME }}:test
           format: table
           exit-code: 1
           ignore-unfixed: true
@@ -63,14 +63,21 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PAT }}
 
-      - name: Build and push to Docker Hub
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ vars.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+      - name: Tag and push validated image
+        run: |
+          docker tag \
+            ${{ env.IMAGE_NAME }}:test \
             ${{ vars.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+          docker tag \
+            ${{ env.IMAGE_NAME }}:test \
+            ${{ vars.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+
+          docker push \
+            ${{ vars.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+          docker push \
+            ${{ vars.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
 
   deploy-on-openshift:
     runs-on: ubuntu-latest

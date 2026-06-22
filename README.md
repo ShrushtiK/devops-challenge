@@ -76,14 +76,14 @@ not require an application runtime or backend server.
 The `Dockerfile` packages Nginx and the webpage into a portable image:
 
 ```dockerfile
-FROM nginxinc/nginx-unprivileged:stable-alpine
+FROM nginxinc/nginx-unprivileged:stable-alpine-slim
 
 COPY index.html /usr/share/nginx/html/index.html
 
 EXPOSE 8080
 ```
 
-The image uses `nginxinc/nginx-unprivileged:stable-alpine` because:
+The image uses `nginxinc/nginx-unprivileged:stable-alpine-slim` because:
 
 - The Alpine variant is smaller than the Debian-based alternatives.
 - Nginx is configured to run without root privileges.

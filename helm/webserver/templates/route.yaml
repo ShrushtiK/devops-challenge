@@ -7,4 +7,4 @@ spec:
     kind: Service
     name: {{ .Values.app.name }}
   port:
-    targetPort: {{ .Values.service.port }}
+    targetPort: {{ .Values.service.targetPort }}
